@@ -2,6 +2,10 @@
 name = "ptrace"
 version = "0.0.1"
 authors = ["Torrie Fischer <torrie@ripple.com>"]
+description = "Rust bindings for the POSIX ptrace API"
+repository = "http://github.com/codius/rust-ptrace"
+license = "MIT"
+readme = "README.md"
 
 [lib]
 name = "ptrace"
