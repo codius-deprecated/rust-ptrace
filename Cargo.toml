@@ -1,0 +1,10 @@
+[package]
+name = "ptrace"
+version = "0.0.1"
+authors = ["Torrie Fischer <torrie@ripple.com>"]
+
+[lib]
+name = "ptrace"
+
+[dependencies.posix-ipc]
+git = "git://github.com/codius/rust-posix-ipc"
