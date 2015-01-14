@@ -11,4 +11,3 @@ readme = "README.md"
 name = "ptrace"
 
 [dependencies.posix-ipc]
-git = "git://github.com/codius/rust-posix-ipc"

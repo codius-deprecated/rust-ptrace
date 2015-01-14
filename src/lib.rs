@@ -1,6 +1,7 @@
 extern crate libc;
 extern crate "posix-ipc" as ipc;
 
+use std::os;
 use std::ptr;
 use std::default::Default;
 use std::vec::Vec;
@@ -91,10 +92,10 @@ bitflags! {
   }
 }
 
-pub fn setoptions(pid: libc::pid_t, opts: Options) {
+pub fn setoptions(pid: libc::pid_t, opts: Options) -> Result<libc::c_long, usize> {
   unsafe {
     raw (Request::SetOptions, pid, ptr::null_mut(), opts.bits as *mut
-    libc::c_void);
+    libc::c_void)
   }
 }
 
@@ -109,9 +110,9 @@ pub fn getregs(pid: libc::pid_t) -> Registers {
   return buf;
 }
 
-pub fn attach(pid: libc::pid_t) {
+pub fn attach(pid: libc::pid_t) -> Result<libc::c_long, usize> {
   unsafe {
-    raw (Request::Attach, pid, ptr::null_mut(), ptr::null_mut());
+    raw (Request::Attach, pid, ptr::null_mut(), ptr::null_mut())
   }
 }
 
@@ -121,9 +122,9 @@ pub fn release(pid: libc::pid_t, signal: ipc::signals::Signal) {
   }
 }
 
-pub fn cont(pid: libc::pid_t, signal: ipc::signals::Signal) {
+pub fn cont(pid: libc::pid_t, signal: ipc::signals::Signal) -> Result<libc::c_long, usize> {
   unsafe {
-    raw (Request::Continue, pid, ptr::null_mut(), (signal as u32) as *mut libc::c_void);
+    raw (Request::Continue, pid, ptr::null_mut(), (signal as u32) as *mut libc::c_void)
   }
 }
 
@@ -136,8 +137,12 @@ pub fn traceme() {
 unsafe fn raw(request: Request,
        pid: libc::pid_t,
        addr: *mut libc::c_void,
-       data: *mut libc::c_void) -> libc::c_long {
-  ptrace (request as libc::c_int, pid, addr, data)
+       data: *mut libc::c_void) -> Result<libc::c_long, usize> {
+  let v = ptrace (request as libc::c_int, pid, addr, data);
+  match v {
+      -1 => Result::Err(os::errno()),
+      _ => Result::Ok(v)
+  }
 }
 
 extern {
@@ -178,9 +183,14 @@ impl Reader {
     }
   }
 
-    pub fn peek_data(&self, address: Address) -> Word {
+    pub fn peek_data(&self, address: Address) -> Result<Word, usize> {
+        let l;
         unsafe {
-            raw (Request::PeekData, self.pid, address as *mut libc::c_void, ptr::null_mut()) as Word
+            l = raw (Request::PeekData, self.pid, address as *mut libc::c_void, ptr::null_mut())
+        }
+        match l {
+            Result::Err(e) => Result::Err(e),
+            _ => Result::Ok(l.unwrap() as Word)
         }
     }
 
@@ -190,7 +200,7 @@ impl Reader {
         let max_addr = address + buf.capacity() as Address;
         let align_end = max_addr - (max_addr % mem::size_of::<Word>() as Address);
         'finish: for read_addr in iter::range_step(address, align_end, mem::size_of::<Word>() as Address) {
-            let d = self.peek_data(read_addr);
+            let d = self.peek_data(read_addr).ok().expect("Could not read");
             for word_idx in iter::range(0, mem::size_of::<Word>()) {
                 let chr = ((d >> (word_idx*8) as uint) & 0xff) as u8;
                 buf.push (chr);
@@ -201,7 +211,7 @@ impl Reader {
             }
         }
         if !end_of_str {
-            let d = self.peek_data(align_end);
+            let d = self.peek_data(align_end).ok().expect("Could not read");
             for word_idx in range(0, mem::size_of::<Word>()) {
                 let chr = ((d >> (word_idx*8) as uint) & 0xff) as u8;
                 buf.push (chr);
