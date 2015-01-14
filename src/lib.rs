@@ -32,7 +32,8 @@ pub enum Request {
   GetRegs = 12,
   Attach = 16,
   Detatch = 17,
-  SetOptions = 0x4200
+  SetOptions = 0x4200,
+  Seize = 0x4206
 }
 
 #[derive(Show, FromPrimitive)]
@@ -110,6 +111,12 @@ pub fn getregs(pid: libc::pid_t) -> Registers {
   return buf;
 }
 
+pub fn seize(pid: libc::pid_t) -> Result<libc::c_long, usize> {
+    unsafe {
+        raw (Request::Seize, pid, ptr::null_mut(), ptr::null_mut())
+    }
+}
+
 pub fn attach(pid: libc::pid_t) -> Result<libc::c_long, usize> {
   unsafe {
     raw (Request::Attach, pid, ptr::null_mut(), ptr::null_mut())
@@ -128,9 +135,9 @@ pub fn cont(pid: libc::pid_t, signal: ipc::signals::Signal) -> Result<libc::c_lo
   }
 }
 
-pub fn traceme() {
+pub fn traceme() -> Result<libc::c_long, usize> {
   unsafe {
-    raw (Request::TraceMe, 0, ptr::null_mut(), ptr::null_mut());
+    raw (Request::TraceMe, 0, ptr::null_mut(), ptr::null_mut())
   }
 }
 
