@@ -36,7 +36,7 @@ pub enum Request {
   Seize = 0x4206
 }
 
-#[derive(Show, FromPrimitive)]
+#[derive(Copy, Show, FromPrimitive)]
 pub enum Event {
   Fork = 1,
   VFork = 2,
@@ -46,6 +46,13 @@ pub enum Event {
   Exit = 6,
   Seccomp = 7,
   Stop = 128
+}
+
+impl Event {
+    pub fn from_wait_status(st: i32) -> Option<Event> {
+        let e: Option<Event> = FromPrimitive::from_i32(((st >> 8) & !5) >> 8);
+        return e;
+    }
 }
 
 #[derive(Default, Show)]
