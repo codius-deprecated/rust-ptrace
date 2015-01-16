@@ -166,7 +166,7 @@ extern {
             data: *mut libc::c_void) -> libc::c_long;
 }
 
-#[derive(Show)]
+#[derive(Copy, Show)]
 pub struct Syscall {
   pub args: [Word; 6],
   pub call: u64,
