@@ -201,6 +201,8 @@ impl Syscall {
       regs.rcx = self.args[3];
       regs.r8 = self.args[4];
       regs.r9 = self.args[5];
+      regs.orig_rax = self.call;
+      regs.rax = self.returnVal;
       setregs(self.pid, &regs)
   }
 }
