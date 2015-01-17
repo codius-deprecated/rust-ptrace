@@ -56,7 +56,7 @@ impl Event {
     }
 }
 
-#[derive(Default, Show)]
+#[derive(Copy, Default, Show)]
 pub struct Registers {
   pub r15: Word,
   pub r14: Word,
@@ -119,10 +119,10 @@ pub fn getregs(pid: libc::pid_t) -> Registers {
   return buf;
 }
 
-pub fn setregs(pid: libc::pid_t, regs: &Registers) {
+pub fn setregs(pid: libc::pid_t, regs: &Registers) -> Result<libc::c_long, usize> {
     unsafe {
         let mut buf: *mut libc::c_void = mem::transmute(regs);
-        raw (Request::SetRegs, pid, ptr::null_mut(), buf);
+        raw (Request::SetRegs, pid, ptr::null_mut(), buf)
     }
 }
 
@@ -191,6 +191,17 @@ impl Syscall {
       args: [regs.rdi, regs.rsi, regs.rdx, regs.rcx, regs.r8, regs.r9],
       returnVal: 0
     }
+  }
+
+  pub fn write(&self) -> Result<libc::c_long, usize> {
+      let mut regs = getregs(self.pid);
+      regs.rdi = self.args[0];
+      regs.rsi = self.args[1];
+      regs.rdx = self.args[2];
+      regs.rcx = self.args[3];
+      regs.r8 = self.args[4];
+      regs.r9 = self.args[5];
+      setregs(self.pid, &regs)
   }
 }
 
