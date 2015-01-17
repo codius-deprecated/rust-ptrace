@@ -30,6 +30,7 @@ pub enum Request {
   Kill = 8,
   SingleStep = 9,
   GetRegs = 12,
+  SetRegs = 13,
   Attach = 16,
   Detatch = 17,
   SetOptions = 0x4200,
@@ -116,6 +117,13 @@ pub fn getregs(pid: libc::pid_t) -> Registers {
   }
 
   return buf;
+}
+
+pub fn setregs(pid: libc::pid_t, regs: &Registers) {
+    unsafe {
+        let mut buf: *mut libc::c_void = mem::transmute(regs);
+        raw (Request::SetRegs, pid, ptr::null_mut(), buf);
+    }
 }
 
 pub fn seize(pid: libc::pid_t) -> Result<libc::c_long, usize> {
