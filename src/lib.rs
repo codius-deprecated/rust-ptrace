@@ -238,21 +238,21 @@ impl Reader {
             let d = self.peek_data(read_addr).ok().expect("Could not read");
             for word_idx in iter::range(0, mem::size_of::<Word>()) {
                 let chr = ((d >> (word_idx*8) as uint) & 0xff) as u8;
-                buf.push (chr);
                 if chr == 0 {
                     end_of_str = true;
                     break 'finish;
                 }
+                buf.push (chr);
             }
         }
         if !end_of_str {
             let d = self.peek_data(align_end).ok().expect("Could not read");
             for word_idx in range(0, mem::size_of::<Word>()) {
                 let chr = ((d >> (word_idx*8) as uint) & 0xff) as u8;
-                buf.push (chr);
                 if chr == 0 {
                     break;
                 }
+                buf.push (chr);
             }
         }
         return buf;
