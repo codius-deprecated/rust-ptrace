@@ -1,3 +1,4 @@
+#[allow(unstable)]
 extern crate libc;
 extern crate "posix-ipc" as ipc;
 
@@ -12,12 +13,13 @@ use std::num::FromPrimitive;
 pub type Address = u64;
 pub type Word = u64;
 
+#[derive(Copy)]
 pub enum Action {
   Allow,
   Kill
 }
 
-#[derive(Show)]
+#[derive(Show, Copy)]
 pub enum Request {
   TraceMe = 0,
   PeekText = 1,
@@ -237,7 +239,7 @@ impl Reader {
         'finish: for read_addr in iter::range_step(address, align_end, mem::size_of::<Word>() as Address) {
             let d = self.peek_data(read_addr).ok().expect("Could not read");
             for word_idx in iter::range(0, mem::size_of::<Word>()) {
-                let chr = ((d >> (word_idx*8) as uint) & 0xff) as u8;
+                let chr = ((d >> (word_idx*8) as usize) & 0xff) as u8;
                 if chr == 0 {
                     end_of_str = true;
                     break 'finish;
@@ -248,7 +250,7 @@ impl Reader {
         if !end_of_str {
             let d = self.peek_data(align_end).ok().expect("Could not read");
             for word_idx in range(0, mem::size_of::<Word>()) {
-                let chr = ((d >> (word_idx*8) as uint) & 0xff) as u8;
+                let chr = ((d >> (word_idx*8) as usize) & 0xff) as u8;
                 if chr == 0 {
                     break;
                 }
