@@ -213,6 +213,62 @@ pub struct Reader {
   pub pid: libc::pid_t
 }
 
+pub struct Writer {
+    pub pid: libc::pid_t
+}
+
+impl Writer {
+    pub fn new(pid: libc::pid_t) -> Self {
+        Writer {
+            pid: pid
+        }
+    }
+
+    pub fn poke_data(&self, address: Address, data: Word) -> Result<Word, usize> {
+        match unsafe {
+            raw (Request::PokeData, self.pid, address as *mut libc::c_void, ptr::null_mut())
+        } {
+            Err(e) => Err(e),
+            Ok(r) => Ok(r as Word)
+        }
+    }
+
+    pub fn write_object<T: Sized>(&self, address: Address, data: &T) -> Result<(), usize> {
+        let mut buf = Vec::with_capacity(mem::size_of::<T>());
+        unsafe {
+            let tptr: *const T = data;
+            let p: *const u8 = mem::transmute(tptr);
+            for i in range(0, buf.capacity()) {
+                buf.push(*p.offset(i as isize));
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn write_data(&self, address: Address, buf: &Vec<u8>) -> Result<(), usize> {
+        let max_addr = address + buf.capacity() as Address;
+        let align_end = max_addr - (max_addr % mem::size_of::<Word>() as Address);
+        for write_addr in iter::range_step(address as usize, align_end as usize, mem::size_of::<Word>()) {
+            let mut d: Word = 0;
+            for word_idx in iter::range(0, mem::size_of::<Word>()) {
+                d = d << mem::size_of::<u8>();
+                d += (buf[write_addr + word_idx] & 0xff) as Word;
+            }
+            self.poke_data(write_addr as Address, d).ok().expect("Could not poke");
+        }
+        if max_addr > align_end {
+            let mut d: Word = 0;
+            for word_idx in iter::range(0, mem::size_of::<Word>()) {
+                d = d << mem::size_of::<u8>();
+                d += (buf[align_end as usize + word_idx] & 0xff) as Word;
+            }
+            self.poke_data(align_end, d).ok().expect("Could not poke last byte");
+        }
+        Ok(())
+    }
+}
+
 impl Reader {
   pub fn new(pid: libc::pid_t) -> Reader {
     Reader {
