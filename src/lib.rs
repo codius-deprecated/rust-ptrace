@@ -211,10 +211,12 @@ impl Syscall {
   }
 }
 
+#[derive(Copy)]
 pub struct Reader {
   pub pid: libc::pid_t
 }
 
+#[derive(Copy)]
 pub struct Writer {
     pub pid: libc::pid_t
 }
