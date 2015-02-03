@@ -112,20 +112,21 @@ pub fn setoptions(pid: libc::pid_t, opts: Options) -> Result<libc::c_long, usize
   }
 }
 
-pub fn getregs(pid: libc::pid_t) -> Registers {
+pub fn getregs(pid: libc::pid_t) -> Result<Registers, usize> {
   let mut buf: Registers = Default::default();
   let buf_mut: *mut Registers = &mut buf;
 
-  unsafe {
-    raw (Request::GetRegs, pid, ptr::null_mut(), buf_mut as *mut libc::c_void);
+  match unsafe {
+    raw (Request::GetRegs, pid, ptr::null_mut(), buf_mut as *mut libc::c_void)
+  } {
+      Ok(_) => Ok(buf),
+      Err(e) => Err(e)
   }
-
-  return buf;
 }
 
 pub fn setregs(pid: libc::pid_t, regs: &Registers) -> Result<libc::c_long, usize> {
     unsafe {
-        let mut buf: *mut libc::c_void = mem::transmute(regs);
+        let buf: *mut libc::c_void = mem::transmute(regs);
         raw (Request::SetRegs, pid, ptr::null_mut(), buf)
     }
 }
@@ -142,9 +143,9 @@ pub fn attach(pid: libc::pid_t) -> Result<libc::c_long, usize> {
   }
 }
 
-pub fn release(pid: libc::pid_t, signal: ipc::signals::Signal) {
+pub fn release(pid: libc::pid_t, signal: ipc::signals::Signal) -> Result<libc::c_long, usize> {
   unsafe {
-    raw (Request::Detatch, pid, ptr::null_mut(), (signal as u32) as *mut libc::c_void);
+    raw (Request::Detatch, pid, ptr::null_mut(), (signal as u32) as *mut libc::c_void)
   }
 }
 
@@ -187,27 +188,34 @@ pub struct Syscall {
 }
 
 impl Syscall {
-  pub fn from_pid(pid: libc::pid_t) -> Syscall {
-    let regs = getregs (pid);
-    Syscall {
-      pid: pid,
-      call: regs.orig_rax,
-      args: [regs.rdi, regs.rsi, regs.rdx, regs.rcx, regs.r8, regs.r9],
-      returnVal: 0
+  pub fn from_pid(pid: libc::pid_t) -> Result<Syscall, usize> {
+    match getregs (pid) {
+        Ok(regs) => 
+            Ok(Syscall {
+              pid: pid,
+              call: regs.orig_rax,
+              args: [regs.rdi, regs.rsi, regs.rdx, regs.rcx, regs.r8, regs.r9],
+              returnVal: 0
+            }),
+        Err(e) => Err(e)
     }
   }
 
   pub fn write(&self) -> Result<libc::c_long, usize> {
-      let mut regs = getregs(self.pid);
-      regs.rdi = self.args[0];
-      regs.rsi = self.args[1];
-      regs.rdx = self.args[2];
-      regs.rcx = self.args[3];
-      regs.r8 = self.args[4];
-      regs.r9 = self.args[5];
-      regs.orig_rax = self.call;
-      regs.rax = self.returnVal;
-      setregs(self.pid, &regs)
+      match getregs(self.pid) {
+          Ok(mut regs) => {
+              regs.rdi = self.args[0];
+              regs.rsi = self.args[1];
+              regs.rdx = self.args[2];
+              regs.rcx = self.args[3];
+              regs.r8 = self.args[4];
+              regs.r9 = self.args[5];
+              regs.orig_rax = self.call;
+              regs.rax = self.returnVal;
+              setregs(self.pid, &regs)
+          },
+          Err(e) => Err(e)
+      }
   }
 }
 
