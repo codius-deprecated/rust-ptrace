@@ -10,4 +10,6 @@ readme = "README.md"
 [lib]
 name = "ptrace"
 
-[dependencies.posix-ipc]
+[dependencies]
+bitflags = "0.1"
+posix-ipc = "0.0"

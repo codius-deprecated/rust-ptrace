@@ -1,6 +1,8 @@
 #[allow(unstable)]
 extern crate libc;
 extern crate "posix-ipc" as ipc;
+#[macro_use]
+extern crate bitflags;
 
 use std::os;
 use std::ptr;
@@ -19,7 +21,7 @@ pub enum Action {
   Kill
 }
 
-#[derive(Show, Copy)]
+#[derive(Debug, Copy)]
 pub enum Request {
   TraceMe = 0,
   PeekText = 1,
@@ -39,7 +41,7 @@ pub enum Request {
   Seize = 0x4206
 }
 
-#[derive(Copy, Show, FromPrimitive)]
+#[derive(Copy, Debug, FromPrimitive)]
 pub enum Event {
   Fork = 1,
   VFork = 2,
@@ -58,7 +60,7 @@ impl Event {
     }
 }
 
-#[derive(Copy, Default, Show)]
+#[derive(Copy, Default, Debug)]
 pub struct Registers {
   pub r15: Word,
   pub r14: Word,
@@ -176,7 +178,7 @@ extern {
             data: *mut libc::c_void) -> libc::c_long;
 }
 
-#[derive(Copy, Show)]
+#[derive(Copy, Debug)]
 pub struct Syscall {
   pub args: [Word; 6],
   pub call: u64,
