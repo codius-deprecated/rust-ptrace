@@ -299,13 +299,17 @@ impl Reader {
         }
     }
 
-    pub fn read_string(&self, address: Address) -> Vec<u8> {
+    pub fn read_string(&self, address: Address) -> Result<Vec<u8>, usize> {
         let mut end_of_str = false;
         let mut buf: Vec<u8> = Vec::with_capacity(1024);
         let max_addr = address + buf.capacity() as Address;
         let align_end = max_addr - (max_addr % mem::size_of::<Word>() as Address);
         'finish: for read_addr in iter::range_step(address, align_end, mem::size_of::<Word>() as Address) {
-            let d = self.peek_data(read_addr).ok().expect("Could not read");
+            let d;
+            match self.peek_data(read_addr) {
+                Ok(v) => d = v,
+                Err(e) => return Err(e)
+            }
             for word_idx in iter::range(0, mem::size_of::<Word>()) {
                 let chr = ((d >> (word_idx*8) as usize) & 0xff) as u8;
                 if chr == 0 {
@@ -316,7 +320,11 @@ impl Reader {
             }
         }
         if !end_of_str {
-            let d = self.peek_data(align_end).ok().expect("Could not read");
+            let d;
+            match self.peek_data(align_end) {
+                Ok(v) => d = v,
+                Err(e) => return Err(e)
+            }
             for word_idx in range(0, mem::size_of::<Word>()) {
                 let chr = ((d >> (word_idx*8) as usize) & 0xff) as u8;
                 if chr == 0 {
@@ -325,6 +333,6 @@ impl Reader {
                 buf.push (chr);
             }
         }
-        return buf;
+        return Ok(buf);
     }
 }
