@@ -11,6 +11,7 @@ use std::vec::Vec;
 use std::mem;
 use std::iter;
 use std::num::FromPrimitive;
+use std::cmp::min;
 
 pub type Address = u64;
 pub type Word = u64;
@@ -238,7 +239,7 @@ impl Writer {
 
     pub fn poke_data(&self, address: Address, data: Word) -> Result<Word, usize> {
         match unsafe {
-            raw (Request::PokeData, self.pid, address as *mut libc::c_void, ptr::null_mut())
+            raw (Request::PokeData, self.pid, address as *mut libc::c_void, data as *mut libc::c_void)
         } {
             Err(e) => Err(e),
             Ok(r) => Ok(r as Word)
@@ -259,23 +260,37 @@ impl Writer {
     }
 
     pub fn write_data(&self, address: Address, buf: &Vec<u8>) -> Result<(), usize> {
-        let max_addr = address + buf.capacity() as Address;
+        // The end of our range
+        let max_addr = address + buf.len() as Address;
+        // The last word we can completely overwrite
         let align_end = max_addr - (max_addr % mem::size_of::<Word>() as Address);
-        for write_addr in iter::range_step(address as usize, align_end as usize, mem::size_of::<Word>()) {
+        for write_addr in iter::range_step(address, align_end, mem::size_of::<Word>() as Address) {
             let mut d: Word = 0;
+            let buf_idx = (write_addr - address) as usize;
             for word_idx in iter::range(0, mem::size_of::<Word>()) {
-                d = d << mem::size_of::<u8>();
-                d += (buf[write_addr + word_idx] & 0xff) as Word;
+                d = set_byte(d, word_idx, buf[buf_idx + word_idx]);
             }
-            self.poke_data(write_addr as Address, d).ok().expect("Could not poke");
+            match self.poke_data(write_addr, d) {
+                Ok(_) => {},
+                Err(e) => return Err(e)
+            }
         }
+        // Handle a partial word overwrite
         if max_addr > align_end {
-            let mut d: Word = 0;
-            for word_idx in iter::range(0, mem::size_of::<Word>()) {
-                d = d << mem::size_of::<u8>();
-                d += (buf[align_end as usize + word_idx] & 0xff) as Word;
+            let buf_start = buf.len() - (max_addr - align_end) as usize;
+            let r = Reader::new(self.pid);
+            let mut d = match r.peek_data(align_end) {
+                Ok(v) => v,
+                Err(e) => return Err(e)
+            };
+            for word_idx in iter::range(0, mem::size_of::<Word>()-2) {
+                let buf_idx = buf_start + word_idx;
+                d = set_byte(d, word_idx, buf[buf_idx]);
             }
-            self.poke_data(align_end, d).ok().expect("Could not poke last byte");
+            match self.poke_data(align_end, d) {
+                Ok(_) => {},
+                Err(e) => return Err(e)
+            }
         }
         Ok(())
     }
@@ -311,7 +326,7 @@ impl Reader {
                 Err(e) => return Err(e)
             }
             for word_idx in iter::range(0, mem::size_of::<Word>()) {
-                let chr = ((d >> (word_idx*8) as usize) & 0xff) as u8;
+                let chr = get_byte(d, word_idx);
                 if chr == 0 {
                     end_of_str = true;
                     break 'finish;
@@ -326,7 +341,7 @@ impl Reader {
                 Err(e) => return Err(e)
             }
             for word_idx in range(0, mem::size_of::<Word>()) {
-                let chr = ((d >> (word_idx*8) as usize) & 0xff) as u8;
+                let chr = get_byte(d, word_idx);
                 if chr == 0 {
                     break;
                 }
@@ -335,4 +350,36 @@ impl Reader {
         }
         return Ok(buf);
     }
+}
+
+fn get_byte(d: Word, byte_idx: usize) -> u8 {
+    assert!(byte_idx < mem::size_of::<Word>() * 8);
+    ((d >> (byte_idx * 8)) & 0xff) as u8
+}
+
+fn set_byte(d: Word, byte_idx: usize, value: u8) -> Word {
+    assert!(byte_idx < mem::size_of::<Word>() * 8);
+    let shift = mem::size_of::<u8>() * 8 * byte_idx;
+    let mask = (0xff << shift);
+    (d & !mask) | (((value as Word) << shift) & mask)
+}
+
+#[test]
+pub fn test_set_byte() {
+    assert_eq!(set_byte(0, 0, 0), 0);
+    assert_eq!(set_byte(0xffffffffffff, 0, 0xff), 0xffffffffffff);
+    assert_eq!(set_byte(0xffffffffffff, 0, 0),    0xffffffffff00);
+    assert_eq!(set_byte(0xffffffffffff, 0, 0xaa), 0xffffffffffaa);
+    assert_eq!(set_byte(0xffffffffffff, 1, 0x00), 0xffffffff00ff);
+    assert_eq!(set_byte(0xffffffffffff, 4, 0xaa), 0xffaaffffffff);
+}
+
+#[test]
+pub fn test_get_byte() {
+    assert_eq!(get_byte(0, 0), 0);
+    assert_eq!(get_byte(0xffffffffffff, 0), 0xff);
+    assert_eq!(get_byte(0xffffffffffff, 8), 0xff);
+    assert_eq!(get_byte(0xffffffffffaa, 0), 0xaa);
+    assert_eq!(get_byte(0x0123456789ab, 1), 0x89);
+    assert_eq!(get_byte(0x0123456789ab, 4), 0x23);
 }
