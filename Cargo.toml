@@ -1,6 +1,6 @@
 [package]
 name = "ptrace"
-version = "0.0.3"
+version = "0.1.0"
 authors = ["Torrie Fischer <torrie@ripple.com>"]
 description = "Rust bindings for the POSIX ptrace API"
 repository = "http://github.com/codius/rust-ptrace"
