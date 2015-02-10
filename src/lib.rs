@@ -135,8 +135,13 @@ pub fn getregs(pid: libc::pid_t) -> Result<Registers, usize> {
 }
 
 pub fn get_event_msg(pid: libc::pid_t) -> Result<libc::c_long, usize> {
-    unsafe {
-        raw (Request::GetEventMsg, pid, ptr::null_mut(), ptr::null_mut())
+    let mut i: libc::c_long = 0;
+    let pi: *mut libc::c_long = &mut i;
+    match unsafe {
+        raw (Request::GetEventMsg, pid, ptr::null_mut(), pi as *mut libc::c_void)
+    } {
+        Ok(_) => Ok(i),
+        Err(e) => Err(e)
     }
 }
 
