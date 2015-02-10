@@ -134,6 +134,12 @@ pub fn getregs(pid: libc::pid_t) -> Result<Registers, usize> {
   }
 }
 
+pub fn get_event_msg(pid: libc::pid_t) -> Result<libc::c_long, usize> {
+    unsafe {
+        raw (Request::GetEventMsg, pid, ptr::null_mut(), ptr::null_mut())
+    }
+}
+
 pub fn setregs(pid: libc::pid_t, regs: &Registers) -> Result<libc::c_long, usize> {
     unsafe {
         let buf: *mut libc::c_void = mem::transmute(regs);
