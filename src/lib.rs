@@ -30,10 +30,25 @@ pub enum Request {
   SingleStep = 9,
   GetRegs = 12,
   SetRegs = 13,
+  GetFpRegs = 14,
+  SetFpRegs = 15,
   Attach = 16,
   Detatch = 17,
+  GetFpxRegs = 18,
+  SetFpxRegs = 19,
+  Syscall = 24,
   SetOptions = 0x4200,
-  Seize = 0x4206
+  GetEventMsg = 0x4201,
+  GetSigInfo = 0x4202,
+  SetSigInfo = 0x4203,
+  GetRegset = 0x4204,
+  SetRegset = 0x4205,
+  Seize = 0x4206,
+  Interrupt = 0x4207,
+  Listen = 0x4208,
+  GetSigMask = 0x420a,
+  SetSigMask = 0x420b,
+  PeekSigInfo = 0x4209
 }
 
 #[derive(Copy, Debug, FromPrimitive)]
