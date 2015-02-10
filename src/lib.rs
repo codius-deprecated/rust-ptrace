@@ -16,12 +16,6 @@ use std::cmp::min;
 pub type Address = u64;
 pub type Word = u64;
 
-#[derive(Copy)]
-pub enum Action {
-  Allow,
-  Kill
-}
-
 #[derive(Debug, Copy)]
 pub enum Request {
   TraceMe = 0,
