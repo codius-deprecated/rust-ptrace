@@ -188,18 +188,18 @@ pub struct Syscall {
   pub args: [Word; 6],
   pub call: u64,
   pub pid: libc::pid_t,
-  pub returnVal: Word
+  pub return_val: Word
 }
 
 impl Syscall {
   pub fn from_pid(pid: libc::pid_t) -> Result<Syscall, libc::c_int> {
     match getregs (pid) {
-        Ok(regs) => 
+        Ok(regs) =>
             Ok(Syscall {
               pid: pid,
               call: regs.orig_rax,
               args: [regs.rdi, regs.rsi, regs.rdx, regs.rcx, regs.r8, regs.r9],
-              returnVal: 0
+              return_val: 0
             }),
         Err(e) => Err(e)
     }
@@ -215,7 +215,7 @@ impl Syscall {
               regs.r8 = self.args[4];
               regs.r9 = self.args[5];
               regs.orig_rax = self.call;
-              regs.rax = self.returnVal;
+              regs.rax = self.return_val;
               setregs(self.pid, &regs)
           },
           Err(e) => Err(e)
@@ -249,6 +249,7 @@ impl Writer {
         }
     }
 
+    // TODO: incomplete
     pub fn write_object<T: Sized>(&self, address: Address, data: &T) -> Result<(), usize> {
         let mut buf = Vec::with_capacity(mem::size_of::<T>());
         unsafe {
@@ -363,7 +364,7 @@ fn get_byte(d: Word, byte_idx: usize) -> u8 {
 fn set_byte(d: Word, byte_idx: usize, value: u8) -> Word {
     assert!(byte_idx < mem::size_of::<Word>() * 8);
     let shift = mem::size_of::<u8>() * 8 * byte_idx;
-    let mask = (0xff << shift);
+    let mask = 0xff << shift;
     (d & !mask) | (((value as Word) << shift) & mask)
 }
 
