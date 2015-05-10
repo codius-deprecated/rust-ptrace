@@ -357,13 +357,13 @@ impl Reader {
 }
 
 fn get_byte(d: Word, byte_idx: usize) -> u8 {
-    assert!(byte_idx < mem::size_of::<Word>() * 8);
+    assert!(byte_idx < mem::size_of::<Word>());
     ((d >> (byte_idx * 8)) & 0xff) as u8
 }
 
 fn set_byte(d: Word, byte_idx: usize, value: u8) -> Word {
-    assert!(byte_idx < mem::size_of::<Word>() * 8);
-    let shift = mem::size_of::<u8>() * 8 * byte_idx;
+    assert!(byte_idx < mem::size_of::<Word>());
+    let shift = byte_idx * 8;
     let mask = 0xff << shift;
     (d & !mask) | (((value as Word) << shift) & mask)
 }
@@ -381,9 +381,20 @@ pub fn test_set_byte() {
 #[test]
 pub fn test_get_byte() {
     assert_eq!(get_byte(0, 0), 0);
-    assert_eq!(get_byte(0xffffffffffff, 0), 0xff);
-    assert_eq!(get_byte(0xffffffffffff, 8), 0xff);
+    assert_eq!(get_byte(!0, 0), 0xff);
+    assert_eq!(get_byte(!0, mem::size_of::<Word>()-1), 0xff);
     assert_eq!(get_byte(0xffffffffffaa, 0), 0xaa);
     assert_eq!(get_byte(0x0123456789ab, 1), 0x89);
     assert_eq!(get_byte(0x0123456789ab, 4), 0x23);
+}
+
+#[test]
+#[should_panic]
+pub fn test_set_byte_panic() {
+    set_byte(!0, mem::size_of::<Word>(), 0xff);
+}
+#[test]
+#[should_panic]
+pub fn test_get_byte_panic() {
+    get_byte(!0, mem::size_of::<Word>());
 }
