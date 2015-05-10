@@ -13,3 +13,6 @@ name = "ptrace"
 [dependencies]
 bitflags = "0.1"
 posix-ipc = "0.0"
+num = "0.1.24"
+enum_primitive = "0.0.2"
+libc = "0.1.7"
