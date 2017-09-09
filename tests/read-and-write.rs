@@ -1,25 +1,25 @@
-#![feature(convert, collections)]
 extern crate libc;
 extern crate ptrace;
-extern crate posix_ipc as ipc;
 
 use std::ffi::CString;
 use std::io;
 use std::ptr;
+
+use ptrace::Address;
 
 #[test]
 fn test_attach_detach() {
     let pid = fork_and_halt();
     assert!(match ptrace::attach(pid) { Ok(_) => true, _ => false });
     unsafe { waitpid(pid, ptr::null_mut(), 0) };
-    assert!(match ptrace::release(pid, ipc::signals::Signal::None) { Ok(_) => true, _ => false });
+    assert!(match ptrace::release(pid, None) { Ok(_) => true, _ => false });
 }
 
 #[test]
 fn test_read() {
     let (buf_addr, pid) = fork_with_buffer("foobar");
     let reader = ptrace::Reader::new(pid);
-    match reader.peek_data(unsafe { buf_addr.offset(3) } as u64) {
+    match reader.peek_data(unsafe { buf_addr.offset(3) as Address }) {
         Ok(v) => assert_eq!((v & 0xff) as u8, 'b' as u8),
         Err(_) => panic!("Error while reading: {:?}", io::Error::last_os_error().raw_os_error().unwrap())
     }
@@ -80,7 +80,7 @@ fn test_write_large_buf() {
     let (buf_addr, pid) = fork_with_buffer(s);
     let writer = ptrace::Writer::new(pid);
     let mut buf: Vec<u8> = Vec::new();
-    buf.push_all("FRIDDLE FRITZ FROB BAZ BAR FOO".as_bytes());
+    buf.extend("FRIDDLE FRITZ FROB BAZ BAR FOO".as_bytes());
     match writer.write_data(buf_addr as u64, &buf) {
         Ok(_) => {
             let reader = ptrace::Reader::new(pid);

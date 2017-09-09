@@ -1,6 +1,6 @@
-#![feature(step_by)]
+#![feature(iterator_step_by)]
 extern crate libc;
-extern crate posix_ipc as ipc;
+extern crate nix;
 #[macro_use]
 extern crate bitflags;
 #[macro_use] extern crate enum_primitive;
@@ -11,6 +11,8 @@ use std::default::Default;
 use std::vec::Vec;
 use std::mem;
 use std::io;
+
+use nix::sys::signal::Signal;
 
 use num::traits::FromPrimitive;
 
@@ -147,15 +149,17 @@ pub fn attach(pid: libc::pid_t) -> Result<libc::c_long, libc::c_int> {
   }
 }
 
-pub fn release(pid: libc::pid_t, signal: ipc::signals::Signal) -> Result<libc::c_long, libc::c_int> {
+pub fn release(pid: libc::pid_t, signal: Option<Signal>) -> Result<libc::c_long, libc::c_int> {
+  let sig = signal.map(|s| s as u32).unwrap_or(0);
   unsafe {
-    raw (Request::Detatch, pid, ptr::null_mut(), (signal as u32) as *mut libc::c_void)
+    raw (Request::Detatch, pid, ptr::null_mut(), sig as *mut libc::c_void)
   }
 }
 
-pub fn cont(pid: libc::pid_t, signal: ipc::signals::Signal) -> Result<libc::c_long, libc::c_int> {
+pub fn cont(pid: libc::pid_t, signal: Option<Signal>) -> Result<libc::c_long, libc::c_int> {
+  let sig = signal.map(|s| s as u32).unwrap_or(0);
   unsafe {
-    raw (Request::Continue, pid, ptr::null_mut(), (signal as u32) as *mut libc::c_void)
+    raw (Request::Continue, pid, ptr::null_mut(), sig as *mut libc::c_void)
   }
 }
 
@@ -268,7 +272,7 @@ impl Writer {
         let max_addr = address + buf.len() as Address;
         // The last word we can completely overwrite
         let align_end = max_addr - (max_addr % mem::size_of::<Word>() as Address);
-        for write_addr in (address..align_end).step_by(mem::size_of::<Word>() as Address) {
+        for write_addr in (address..align_end).step_by(mem::size_of::<Word>()) {
             let mut d: Word = 0;
             let buf_idx = (write_addr - address) as usize;
             for word_idx in 0..mem::size_of::<Word>() {
@@ -323,7 +327,7 @@ impl Reader {
         let mut buf: Vec<u8> = Vec::with_capacity(1024);
         let max_addr = address + buf.capacity() as Address;
         let align_end = max_addr - (max_addr % mem::size_of::<Word>() as Address);
-        'finish: for read_addr in (address..align_end).step_by(mem::size_of::<Word>() as Address) {
+        'finish: for read_addr in (address..align_end).step_by(mem::size_of::<Word>()) {
             let d;
             match self.peek_data(read_addr) {
                 Ok(v) => d = v,
