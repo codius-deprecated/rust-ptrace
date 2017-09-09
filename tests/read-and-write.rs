@@ -1,27 +1,27 @@
-#![feature(libc, std_misc)]
 extern crate libc;
 extern crate ptrace;
-extern crate "posix-ipc" as ipc;
 
 use std::ffi::CString;
-use std::os;
+use std::io;
 use std::ptr;
+
+use ptrace::Address;
 
 #[test]
 fn test_attach_detach() {
     let pid = fork_and_halt();
     assert!(match ptrace::attach(pid) { Ok(_) => true, _ => false });
     unsafe { waitpid(pid, ptr::null_mut(), 0) };
-    assert!(match ptrace::release(pid, ipc::signals::Signal::None) { Ok(_) => true, _ => false });
+    assert!(match ptrace::release(pid, None) { Ok(_) => true, _ => false });
 }
 
 #[test]
 fn test_read() {
     let (buf_addr, pid) = fork_with_buffer("foobar");
     let reader = ptrace::Reader::new(pid);
-    match reader.peek_data(unsafe { buf_addr.offset(3) } as u64) {
+    match reader.peek_data(unsafe { buf_addr.offset(3) as Address }) {
         Ok(v) => assert_eq!((v & 0xff) as u8, 'b' as u8),
-        Err(_) => panic!("Error while reading: {:?}", os::last_os_error())
+        Err(_) => panic!("Error while reading: {:?}", io::Error::last_os_error().raw_os_error().unwrap())
     }
 }
 
@@ -33,7 +33,7 @@ fn test_read_string() {
         Ok(v) =>
             assert_eq!(v, vec!('f' as u8, 'o' as u8, 'o' as u8, 'b' as u8, 'a' as u8, 'r' as u8)),
         Err(_) =>
-            panic!("Error while reading string: {:?}", os::last_os_error())
+            panic!("Error while reading string: {:?}", io::Error::last_os_error().raw_os_error().unwrap())
     }
 }
 
@@ -50,7 +50,7 @@ fn test_write() {
             assert_eq!(v, foo_word);
         },
         Err(_) =>
-            panic!("Error while writing char: {:?}", os::last_os_error())
+            panic!("Error while writing char: {:?}", io::Error::last_os_error().raw_os_error().unwrap())
     }
 }
 
@@ -68,7 +68,7 @@ fn test_write_small_buf() {
             assert_eq!(str::from_utf8(v.as_slice()), Ok("FOOBAR and then some"));
         },
         Err(_) =>
-            panic!("Error while writing buffer: {:?}", os::last_os_error())
+            panic!("Error while writing buffer: {:?}", io::Error::last_os_error().raw_os_error().unwrap())
     }
 }
 
@@ -80,7 +80,7 @@ fn test_write_large_buf() {
     let (buf_addr, pid) = fork_with_buffer(s);
     let writer = ptrace::Writer::new(pid);
     let mut buf: Vec<u8> = Vec::new();
-    buf.push_all("FRIDDLE FRITZ FROB BAZ BAR FOO".as_bytes());
+    buf.extend("FRIDDLE FRITZ FROB BAZ BAR FOO".as_bytes());
     match writer.write_data(buf_addr as u64, &buf) {
         Ok(_) => {
             let reader = ptrace::Reader::new(pid);
@@ -88,12 +88,12 @@ fn test_write_large_buf() {
             assert_eq!(str::from_utf8(v.as_slice()), str::from_utf8(buf.as_slice()));
         },
         Err(_) =>
-            panic!("Error while writing buffer: {:?}", os::last_os_error())
+            panic!("Error while writing buffer: {:?}", io::Error::last_os_error().raw_os_error().unwrap())
     }
 }
 
 fn fork_with_buffer(buf: &str) -> (*const libc::c_char, libc::c_int) {
-    let buf = CString::from_slice(buf.as_bytes());
+    let buf = CString::new(buf.as_bytes()).unwrap();
     let buf_addr: *const libc::c_char = buf.as_ptr();
     let pid = fork_and_halt();
     ptrace::attach(pid).ok().expect("Could not attach to child");

@@ -1,28 +1,31 @@
-#[allow(unstable)]
+#![feature(iterator_step_by)]
 extern crate libc;
-extern crate "posix-ipc" as ipc;
+extern crate nix;
 #[macro_use]
 extern crate bitflags;
+#[macro_use] extern crate enum_primitive;
+extern crate num;
 
-use std::os;
 use std::ptr;
 use std::default::Default;
 use std::vec::Vec;
 use std::mem;
-use std::iter;
-use std::num::FromPrimitive;
-use std::cmp::min;
+use std::io;
+
+use nix::sys::signal::Signal;
+
+use num::traits::FromPrimitive;
 
 pub type Address = u64;
 pub type Word = u64;
 
-#[derive(Copy)]
+#[derive(Copy, Clone)]
 pub enum Action {
   Allow,
   Kill
 }
 
-#[derive(Debug, Copy)]
+#[derive(Debug, Copy, Clone)]
 pub enum Request {
   TraceMe = 0,
   PeekText = 1,
@@ -42,7 +45,8 @@ pub enum Request {
   Seize = 0x4206
 }
 
-#[derive(Copy, Debug, FromPrimitive)]
+enum_from_primitive! {
+#[derive(Copy, Clone, Debug)]
 pub enum Event {
   Fork = 1,
   VFork = 2,
@@ -53,15 +57,16 @@ pub enum Event {
   Seccomp = 7,
   Stop = 128
 }
+}
 
 impl Event {
     pub fn from_wait_status(st: i32) -> Option<Event> {
-        let e: Option<Event> = FromPrimitive::from_i32(((st >> 8) & !5) >> 8);
+        let e: Option<Event> = Event::from_i32(((st >> 8) & !5) >> 8);
         return e;
     }
 }
 
-#[derive(Copy, Default, Debug)]
+#[derive(Copy, Clone, Default, Debug)]
 pub struct Registers {
   pub r15: Word,
   pub r14: Word,
@@ -106,14 +111,14 @@ bitflags! {
   }
 }
 
-pub fn setoptions(pid: libc::pid_t, opts: Options) -> Result<libc::c_long, usize> {
+pub fn setoptions(pid: libc::pid_t, opts: Options) -> Result<libc::c_long, libc::c_int> {
   unsafe {
     raw (Request::SetOptions, pid, ptr::null_mut(), opts.bits as *mut
     libc::c_void)
   }
 }
 
-pub fn getregs(pid: libc::pid_t) -> Result<Registers, usize> {
+pub fn getregs(pid: libc::pid_t) -> Result<Registers, libc::c_int> {
   let mut buf: Registers = Default::default();
   let buf_mut: *mut Registers = &mut buf;
 
@@ -125,38 +130,40 @@ pub fn getregs(pid: libc::pid_t) -> Result<Registers, usize> {
   }
 }
 
-pub fn setregs(pid: libc::pid_t, regs: &Registers) -> Result<libc::c_long, usize> {
+pub fn setregs(pid: libc::pid_t, regs: &Registers) -> Result<libc::c_long, libc::c_int> {
     unsafe {
         let buf: *mut libc::c_void = mem::transmute(regs);
         raw (Request::SetRegs, pid, ptr::null_mut(), buf)
     }
 }
 
-pub fn seize(pid: libc::pid_t) -> Result<libc::c_long, usize> {
+pub fn seize(pid: libc::pid_t) -> Result<libc::c_long, libc::c_int> {
     unsafe {
         raw (Request::Seize, pid, ptr::null_mut(), ptr::null_mut())
     }
 }
 
-pub fn attach(pid: libc::pid_t) -> Result<libc::c_long, usize> {
+pub fn attach(pid: libc::pid_t) -> Result<libc::c_long, libc::c_int> {
   unsafe {
     raw (Request::Attach, pid, ptr::null_mut(), ptr::null_mut())
   }
 }
 
-pub fn release(pid: libc::pid_t, signal: ipc::signals::Signal) -> Result<libc::c_long, usize> {
+pub fn release(pid: libc::pid_t, signal: Option<Signal>) -> Result<libc::c_long, libc::c_int> {
+  let sig = signal.map(|s| s as u32).unwrap_or(0);
   unsafe {
-    raw (Request::Detatch, pid, ptr::null_mut(), (signal as u32) as *mut libc::c_void)
+    raw (Request::Detatch, pid, ptr::null_mut(), sig as *mut libc::c_void)
   }
 }
 
-pub fn cont(pid: libc::pid_t, signal: ipc::signals::Signal) -> Result<libc::c_long, usize> {
+pub fn cont(pid: libc::pid_t, signal: Option<Signal>) -> Result<libc::c_long, libc::c_int> {
+  let sig = signal.map(|s| s as u32).unwrap_or(0);
   unsafe {
-    raw (Request::Continue, pid, ptr::null_mut(), (signal as u32) as *mut libc::c_void)
+    raw (Request::Continue, pid, ptr::null_mut(), sig as *mut libc::c_void)
   }
 }
 
-pub fn traceme() -> Result<libc::c_long, usize> {
+pub fn traceme() -> Result<libc::c_long, libc::c_int> {
   unsafe {
     raw (Request::TraceMe, 0, ptr::null_mut(), ptr::null_mut())
   }
@@ -165,10 +172,10 @@ pub fn traceme() -> Result<libc::c_long, usize> {
 unsafe fn raw(request: Request,
        pid: libc::pid_t,
        addr: *mut libc::c_void,
-       data: *mut libc::c_void) -> Result<libc::c_long, usize> {
+       data: *mut libc::c_void) -> Result<libc::c_long, libc::c_int> {
   let v = ptrace (request as libc::c_int, pid, addr, data);
   match v {
-      -1 => Result::Err(os::errno()),
+      -1 => Result::Err(io::Error::last_os_error().raw_os_error().unwrap()),
       _ => Result::Ok(v)
   }
 }
@@ -180,29 +187,29 @@ extern {
             data: *mut libc::c_void) -> libc::c_long;
 }
 
-#[derive(Copy, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Syscall {
   pub args: [Word; 6],
   pub call: u64,
   pub pid: libc::pid_t,
-  pub returnVal: Word
+  pub return_val: Word
 }
 
 impl Syscall {
-  pub fn from_pid(pid: libc::pid_t) -> Result<Syscall, usize> {
+  pub fn from_pid(pid: libc::pid_t) -> Result<Syscall, libc::c_int> {
     match getregs (pid) {
-        Ok(regs) => 
+        Ok(regs) =>
             Ok(Syscall {
               pid: pid,
               call: regs.orig_rax,
               args: [regs.rdi, regs.rsi, regs.rdx, regs.rcx, regs.r8, regs.r9],
-              returnVal: 0
+              return_val: 0
             }),
         Err(e) => Err(e)
     }
   }
 
-  pub fn write(&self) -> Result<libc::c_long, usize> {
+  pub fn write(&self) -> Result<libc::c_long, libc::c_int> {
       match getregs(self.pid) {
           Ok(mut regs) => {
               regs.rdi = self.args[0];
@@ -212,7 +219,7 @@ impl Syscall {
               regs.r8 = self.args[4];
               regs.r9 = self.args[5];
               regs.orig_rax = self.call;
-              regs.rax = self.returnVal;
+              regs.rax = self.return_val;
               setregs(self.pid, &regs)
           },
           Err(e) => Err(e)
@@ -220,12 +227,12 @@ impl Syscall {
   }
 }
 
-#[derive(Copy)]
+#[derive(Copy, Clone)]
 pub struct Reader {
   pub pid: libc::pid_t
 }
 
-#[derive(Copy)]
+#[derive(Copy, Clone)]
 pub struct Writer {
     pub pid: libc::pid_t
 }
@@ -237,7 +244,7 @@ impl Writer {
         }
     }
 
-    pub fn poke_data(&self, address: Address, data: Word) -> Result<Word, usize> {
+    pub fn poke_data(&self, address: Address, data: Word) -> Result<Word, libc::c_int> {
         match unsafe {
             raw (Request::PokeData, self.pid, address as *mut libc::c_void, data as *mut libc::c_void)
         } {
@@ -246,12 +253,13 @@ impl Writer {
         }
     }
 
+    // TODO: incomplete
     pub fn write_object<T: Sized>(&self, address: Address, data: &T) -> Result<(), usize> {
         let mut buf = Vec::with_capacity(mem::size_of::<T>());
         unsafe {
             let tptr: *const T = data;
             let p: *const u8 = mem::transmute(tptr);
-            for i in range(0, buf.capacity()) {
+            for i in 0..buf.capacity() {
                 buf.push(*p.offset(i as isize));
             }
         }
@@ -259,15 +267,15 @@ impl Writer {
         Ok(())
     }
 
-    pub fn write_data(&self, address: Address, buf: &Vec<u8>) -> Result<(), usize> {
+    pub fn write_data(&self, address: Address, buf: &Vec<u8>) -> Result<(), libc::c_int> {
         // The end of our range
         let max_addr = address + buf.len() as Address;
         // The last word we can completely overwrite
         let align_end = max_addr - (max_addr % mem::size_of::<Word>() as Address);
-        for write_addr in iter::range_step(address, align_end, mem::size_of::<Word>() as Address) {
+        for write_addr in (address..align_end).step_by(mem::size_of::<Word>()) {
             let mut d: Word = 0;
             let buf_idx = (write_addr - address) as usize;
-            for word_idx in iter::range(0, mem::size_of::<Word>()) {
+            for word_idx in 0..mem::size_of::<Word>() {
                 d = set_byte(d, word_idx, buf[buf_idx + word_idx]);
             }
             match self.poke_data(write_addr, d) {
@@ -283,7 +291,7 @@ impl Writer {
                 Ok(v) => v,
                 Err(e) => return Err(e)
             };
-            for word_idx in iter::range(0, mem::size_of::<Word>()-2) {
+            for word_idx in 0..mem::size_of::<Word>()-2 {
                 let buf_idx = buf_start + word_idx;
                 d = set_byte(d, word_idx, buf[buf_idx]);
             }
@@ -303,7 +311,7 @@ impl Reader {
     }
   }
 
-    pub fn peek_data(&self, address: Address) -> Result<Word, usize> {
+    pub fn peek_data(&self, address: Address) -> Result<Word, libc::c_int> {
         let l;
         unsafe {
             l = raw (Request::PeekData, self.pid, address as *mut libc::c_void, ptr::null_mut())
@@ -314,18 +322,18 @@ impl Reader {
         }
     }
 
-    pub fn read_string(&self, address: Address) -> Result<Vec<u8>, usize> {
+    pub fn read_string(&self, address: Address) -> Result<Vec<u8>, libc::c_int> {
         let mut end_of_str = false;
         let mut buf: Vec<u8> = Vec::with_capacity(1024);
         let max_addr = address + buf.capacity() as Address;
         let align_end = max_addr - (max_addr % mem::size_of::<Word>() as Address);
-        'finish: for read_addr in iter::range_step(address, align_end, mem::size_of::<Word>() as Address) {
+        'finish: for read_addr in (address..align_end).step_by(mem::size_of::<Word>()) {
             let d;
             match self.peek_data(read_addr) {
                 Ok(v) => d = v,
                 Err(e) => return Err(e)
             }
-            for word_idx in iter::range(0, mem::size_of::<Word>()) {
+            for word_idx in 0..mem::size_of::<Word>() {
                 let chr = get_byte(d, word_idx);
                 if chr == 0 {
                     end_of_str = true;
@@ -340,7 +348,7 @@ impl Reader {
                 Ok(v) => d = v,
                 Err(e) => return Err(e)
             }
-            for word_idx in range(0, mem::size_of::<Word>()) {
+            for word_idx in 0..mem::size_of::<Word>() {
                 let chr = get_byte(d, word_idx);
                 if chr == 0 {
                     break;
@@ -353,14 +361,14 @@ impl Reader {
 }
 
 fn get_byte(d: Word, byte_idx: usize) -> u8 {
-    assert!(byte_idx < mem::size_of::<Word>() * 8);
+    assert!(byte_idx < mem::size_of::<Word>());
     ((d >> (byte_idx * 8)) & 0xff) as u8
 }
 
 fn set_byte(d: Word, byte_idx: usize, value: u8) -> Word {
-    assert!(byte_idx < mem::size_of::<Word>() * 8);
-    let shift = mem::size_of::<u8>() * 8 * byte_idx;
-    let mask = (0xff << shift);
+    assert!(byte_idx < mem::size_of::<Word>());
+    let shift = byte_idx * 8;
+    let mask = 0xff << shift;
     (d & !mask) | (((value as Word) << shift) & mask)
 }
 
@@ -377,9 +385,20 @@ pub fn test_set_byte() {
 #[test]
 pub fn test_get_byte() {
     assert_eq!(get_byte(0, 0), 0);
-    assert_eq!(get_byte(0xffffffffffff, 0), 0xff);
-    assert_eq!(get_byte(0xffffffffffff, 8), 0xff);
+    assert_eq!(get_byte(!0, 0), 0xff);
+    assert_eq!(get_byte(!0, mem::size_of::<Word>()-1), 0xff);
     assert_eq!(get_byte(0xffffffffffaa, 0), 0xaa);
     assert_eq!(get_byte(0x0123456789ab, 1), 0x89);
     assert_eq!(get_byte(0x0123456789ab, 4), 0x23);
+}
+
+#[test]
+#[should_panic]
+pub fn test_set_byte_panic() {
+    set_byte(!0, mem::size_of::<Word>(), 0xff);
+}
+#[test]
+#[should_panic]
+pub fn test_get_byte_panic() {
+    get_byte(!0, mem::size_of::<Word>());
 }
